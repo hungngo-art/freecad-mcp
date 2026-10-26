@@ -32,11 +32,33 @@ class PortableLauncherTest(unittest.TestCase):
         self.assertEqual(launcher.install(), 0)
         self.assertEqual(launcher.install(), 0)
         self.assertEqual(launcher.check(), 0)
+        self.assertTrue((p["cli_skill"] / "SKILL.md").is_file())
         self.assertEqual(launcher.uninstall(), 0)
         self.assertEqual(launcher.check(), 1)
+        self.assertFalse(p["cli_skill"].exists())
         self.assertEqual(launcher.read_json(p["config"]),
                          {"mcpServers": {"other": {"command": "x"}}, "custom": True})
         self.assertIn("Existing guidance", p["instructions"].read_text(encoding="utf-8"))
+
+    def test_empty_json_files_are_initialized(self):
+        p = launcher.paths()
+        launcher.write_text(p["config"], "")
+        launcher.write_text(p["state"], "   \n")
+        self.assertEqual(launcher.install(), 0)
+        self.assertEqual(launcher.check(), 0)
+        self.assertEqual(launcher.read_json(p["config"])["mcpServers"]["freecad"]["command"],
+                         str(self.exe))
+
+    def test_malformed_nonempty_json_is_never_overwritten(self):
+        p = launcher.paths()
+        launcher.write_text(p["config"], "{broken")
+        with self.assertRaisesRegex(ValueError, "Invalid JSON in"):
+            launcher.install()
+        self.assertEqual(p["config"].read_text(encoding="utf-8"), "{broken")
+
+    def test_subcommand_help(self):
+        with patch.object(sys, "argv", ["freecad-mcp.exe", "install", "--help"]):
+            self.assertEqual(launcher.main(), 0)
 
     def test_existing_server_not_overwritten(self):
         p = launcher.paths()

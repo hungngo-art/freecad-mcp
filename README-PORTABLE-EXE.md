@@ -21,8 +21,12 @@ Invoking the EXE with no arguments runs the original stdio MCP server.
 ~/.gemini/config/mcp_config.json under "mcpServers.freecad"; keep it at that
 path or rerun install after moving it. The installer embeds the FreeCAD addon,
 installs global skills in ~/.agents/skills/freecad-mcp and
-~/.gemini/config/skills/freecad-mcp, and adds marked instructions to
+~/.gemini/config/skills/freecad-mcp, and the Antigravity CLI global path
+~/.gemini/antigravity-cli/skills/freecad-mcp; it also adds marked instructions to
 ~/.gemini/AGENTS.md.
+
+Empty MCP JSON files are initialized as new objects; malformed non-empty JSON
+files are rejected with a descriptive error and never overwritten.
 
 The installer preserves unrelated configuration entries and refuses to
 overwrite an existing, unrelated "freecad" MCP server, user skill or addon.

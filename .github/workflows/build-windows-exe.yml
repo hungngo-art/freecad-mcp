@@ -51,8 +51,14 @@ jobs:
           $env:USERPROFILE = Join-Path $env:RUNNER_TEMP 'portable-freecad-home'
           $env:APPDATA = Join-Path $env:USERPROFILE 'AppData\Roaming'
           New-Item -ItemType Directory -Force $env:USERPROFILE | Out-Null
+          # Regression: older installations may have an empty MCP JSON file.
+          $cfg = Join-Path $env:USERPROFILE '.gemini\\config\\mcp_config.json'
+          New-Item -ItemType Directory -Force (Split-Path $cfg -Parent) | Out-Null
+          [System.IO.File]::WriteAllText($cfg, '')
           & $exe help
           if ($LASTEXITCODE -ne 0) { throw "help failed" }
+          & $exe install --help
+          if ($LASTEXITCODE -ne 0) { throw "subcommand help failed" }
           & $exe install
           if ($LASTEXITCODE -ne 0) { throw "install failed" }
           & $exe check

@@ -27,6 +27,7 @@ def paths():
         "instructions": gemini / "AGENTS.md",
         "skill": home / ".agents" / "skills" / NAME,
         "gemini_skill": gemini / "config" / "skills" / NAME,
+        "cli_skill": gemini / "antigravity-cli" / "skills" / NAME,
         "addon": Path(os.environ.get("APPDATA", str(home / "AppData" / "Roaming")))
                  / "FreeCAD" / "Mod" / "FreeCADMCP",
     }
@@ -41,9 +42,19 @@ def exe_path():
 def read_json(path):
     if not path.exists():
         return {}
-    value = json.loads(path.read_text(encoding="utf-8-sig"))
+    raw = path.read_text(encoding="utf-8-sig")
+    if not raw.strip():
+        return {}
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Invalid JSON in {path} at line {exc.lineno}, "
+            f"column {exc.colno}: {exc.msg}. "
+            "Repair the file manually; it was not overwritten."
+        ) from exc
     if not isinstance(value, dict):
-        raise ValueError(f"Expected JSON object: {path}")
+        raise ValueError(f"Expected a JSON object in {path}; file was not overwritten")
     return value
 
 def write_text(path, content):
@@ -78,7 +89,7 @@ def install():
         allowed.append({"command": previous, "args": []})
     if existing is not None and existing not in allowed:
         raise RuntimeError("A non-managed 'freecad' MCP entry already exists; no changes made")
-    for k in ("skill", "gemini_skill"):
+    for k in ("skill", "gemini_skill", "cli_skill"):
         if p[k].exists() and not managed(p[k]):
             raise RuntimeError(f"Refusing to overwrite existing skill: {p[k]}")
     skill_src = resource("resources/SKILL.md")
@@ -89,7 +100,7 @@ def install():
     original = instructions.read_text(encoding="utf-8") if instructions.exists() else ""
     if (START in original) != (STOP in original):
         raise RuntimeError("Global AGENTS.md contains incomplete installer markers")
-    for k in ("skill", "gemini_skill"):
+    for k in ("skill", "gemini_skill", "cli_skill"):
         p[k].mkdir(parents=True, exist_ok=True)
         shutil.copyfile(skill_src, p[k] / "SKILL.md")
         (p[k] / ".freecad-mcp-managed").write_text("freecad-mcp\n", encoding="utf-8")
@@ -128,7 +139,7 @@ def uninstall():
             a = txt.index(START)
             b = txt.index(STOP, a) + len(STOP)
             write_text(instructions, txt[:a] + txt[b:])
-    for k in ("skill", "gemini_skill", "addon"):
+    for k in ("skill", "gemini_skill", "cli_skill", "addon"):
         if managed(p[k]):
             shutil.rmtree(p[k])
     p["state"].unlink(missing_ok=True)
@@ -146,7 +157,8 @@ def check():
         "MCP registration": state.get("key") == KEY and current == {"command": command, "args": []},
         "EXE file": Path(command).is_file(),
         "Global agents skill": managed(p["skill"]) and (p["skill"] / "SKILL.md").is_file(),
-        "Antigravity skill": managed(p["gemini_skill"]) and (p["gemini_skill"] / "SKILL.md").is_file(),
+        "Antigravity shared skill": managed(p["gemini_skill"]) and (p["gemini_skill"] / "SKILL.md").is_file(),
+        "Antigravity CLI skill": managed(p["cli_skill"]) and (p["cli_skill"] / "SKILL.md").is_file(),
         "Global instructions": p["instructions"].is_file()
              and START in p["instructions"].read_text(encoding="utf-8")
              and STOP in p["instructions"].read_text(encoding="utf-8"),
@@ -173,6 +185,8 @@ def main():
     actions = {"help": usage, "--help": usage, "-h": usage,
                "install": install, "uninstall": uninstall, "check": check}
     if command in actions:
+        if len(args) == 2 and args[1].lower() in ("help", "--help", "-h"):
+            return usage()
         if len(args) != 1:
             print(f"Unexpected extra arguments: {args[1:]}", file=sys.stderr)
             return 2
