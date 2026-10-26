@@ -1,0 +1,72 @@
+name: Build FreeCAD MCP Windows EXE
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'launcher.py'
+      - 'freecad-mcp.spec'
+      - 'resources/**'
+      - 'addon/**'
+      - 'src/**'
+      - 'pyproject.toml'
+      - 'tests/test_portable_launcher.py'
+      - '.github/workflows/build-windows-exe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Set up build Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install project and PyInstaller
+        shell: pwsh
+        run: |
+          node --version
+          python --version
+          python -m pip install --upgrade pip
+          python -m pip install -e . pyinstaller
+      - name: Test installer
+        run: python -m unittest discover -s tests -p test_portable_launcher.py -v
+      - name: Build single EXE
+        run: python -m PyInstaller --noconfirm --clean freecad-mcp.spec
+      - name: Test built EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Resolve-Path dist/freecad-mcp.exe).Path
+          $env:USERPROFILE = Join-Path $env:RUNNER_TEMP 'portable-freecad-home'
+          $env:APPDATA = Join-Path $env:USERPROFILE 'AppData\Roaming'
+          New-Item -ItemType Directory -Force $env:USERPROFILE | Out-Null
+          & $exe help
+          if ($LASTEXITCODE -ne 0) { throw "help failed" }
+          & $exe install
+          if ($LASTEXITCODE -ne 0) { throw "install failed" }
+          & $exe check
+          if ($LASTEXITCODE -ne 0) { throw "check failed" }
+          & $exe uninstall
+          if ($LASTEXITCODE -ne 0) { throw "uninstall failed" }
+          & $exe check
+          if ($LASTEXITCODE -eq 0) { throw "check should fail after uninstall" }
+          Get-FileHash $exe -Algorithm SHA256 | Format-List
+          exit 0
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: freecad-mcp-windows-x64
+          path: dist/freecad-mcp.exe
+          if-no-files-found: error
+          retention-days: 30
